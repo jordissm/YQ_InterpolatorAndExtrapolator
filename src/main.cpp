@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <thread>
 #include <stdexcept>
+#include <algorithm>
 #include <omp.h>
 
 using namespace std::chrono;
