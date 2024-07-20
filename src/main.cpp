@@ -336,9 +336,9 @@ int main() {
     const std::string inputParametersTitle = "Input parameters";
     PrintSectionTitle(inputParametersTitle);
     // Parameters
-    double intervalMin = -2000;
-    double intervalMax = 2000;
-    double delta = 20;
+    double intervalMin = -1000;
+    double intervalMax = 1000;
+    double delta = 10;
     int order = 3;
     std::vector<std::pair<std::string, double>> parameters = {
         {"Interval minimum", intervalMin},
