@@ -1,0 +1,22 @@
+# Ignore all
+*
+
+# Unignore all with extensions
+!*.*
+
+# Unignore all dirs
+!*/
+
+# Ignore local files
+.vscode/
+**/.DS_Store
+
+# Unignore important files
+!COPYING
+
+# Ignore `build` dir
+build/
+
+# Ignore input and output data
+data/**
+output/**
