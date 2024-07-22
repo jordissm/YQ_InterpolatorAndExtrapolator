@@ -10,9 +10,47 @@
 #include <thread>
 #include <stdexcept>
 #include <algorithm>
-#include <omp.h>
+#include <filesystem>
+#include <mutex>
+#include <boost/program_options.hpp>
+#ifdef OPENMP_AVAILABLE
+    #define OPENMP_ENABLED 1
+    #include <omp.h>
+#else
+    #define OPENMP_ENABLED 0
+#endif
 
+namespace po = boost::program_options;
 using namespace std::chrono;
+std::mutex mtx;
+
+void readCommandLineArguments(int argc, char* argv[], std::string& inputFile, double& intervalMin, double& intervalMax, double& delta, int& order) {
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "produce help message")
+        ("input-file", po::value<std::string>(&inputFile)->required(), "input file name")
+        ("interval-min", po::value<double>(&intervalMin)->required(), "interval minimum")
+        ("interval-max", po::value<double>(&intervalMax)->required(), "interval maximum")
+        ("delta", po::value<double>(&delta)->required(), "delta")
+        ("order", po::value<int>(&order)->required(), "order");
+
+    po::variables_map vm;
+    try {
+        po::store(po::parse_command_line(argc, argv, desc), vm);
+
+        if (vm.count("help")) {
+            std::cout << desc << std::endl;
+            exit(0);
+        }
+        po::notify(vm);
+    }
+    catch (const po::error& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << desc << std::endl;
+        exit(1);
+    }
+} // readCommandLineArguments
+
 
 void display_progress(float progress) {
     int barWidth = 50;
@@ -58,9 +96,29 @@ std::string FormatNumber(double number, int precision) {
     return stream.str();
 }
 
+bool CheckConditions(const std::vector<double>& testParameters, const std::vector<std::pair<double, std::pair<double, double>>>& data, int order) {
+    for (const auto& datapoint : data) {
+        double yq = datapoint.first;
+        double value = 0.0;
+        double yqPower = 1.0;  // Start with yq^0
+
+        for (int i = 0; i <= order; ++i) {
+            value += testParameters[i] * yqPower;
+            yqPower *= yq;  // Increment the power of yq
+        }
+
+        double lowerBound = datapoint.second.first;
+        double upperBound = datapoint.second.second;
+        if (!(lowerBound <= value && value <= upperBound)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std::pair<double, std::pair<double, double>>>& data, double intervalMin, double intervalMax, double delta, int order = 1) {
     auto start = high_resolution_clock::now();
+
     // Generate a vector with all the possible values for the polynomial coefficients
     std::vector<double> possibleCoefficients;
     for (double i = intervalMin; i <= intervalMax; i += delta) {
@@ -70,63 +128,52 @@ std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std:
     int n_params = order + 1;
     int base = possibleCoefficients.size();
 
-    auto CheckConditions = [&](const std::vector<double>& testParameters) {
-        for (const auto& datapoint : data) {
-            double yq = datapoint.first;
-            double value = 0.0;
-            for (int i = 0; i <= order; ++i) {
-                value += testParameters[i] * std::pow(yq, i);
-            }
-            double lowerBound = datapoint.second.first;
-            double upperBound = datapoint.second.second;
-            if (!(lowerBound <= value && value <= upperBound)) {
-                return false;
-            }
-        }
-        return true;
-    };
-
     std::vector<std::vector<double>> estimatedParameterSet;
-    long long n_params_combinations = std::pow(base, n_params);
+    long long n_params_combinations = static_cast<long long>(std::pow(base, n_params));
     std::cout << " > Number of possible combinations: " << FormatNumberWithThousandsSeparator(n_params_combinations) << std::endl;
 
-    long num_items_computed = 0;
-    int n_threads = omp_get_max_threads();
-    #pragma omp parallel for schedule(dynamic,100) reduction(+:num_items_computed) num_threads(n_threads)
+    #if OPENMP_ENABLED
+        long num_items_computed = 0;
+        int n_threads = omp_get_max_threads();
+        #pragma omp parallel for schedule(dynamic,100) reduction(+:num_items_computed) num_threads(n_threads)
+    #endif
     for (long long i = 0; i < n_params_combinations; i++) {
         std::vector<int> parameterRepresentation = FindRepresentation(i, base, n_params);
         std::vector<double> testParameters(n_params);
         for (int j = 0; j < n_params; ++j) {
             testParameters[j] = possibleCoefficients[parameterRepresentation[j]];
         }
-        if (order > 1) {
-            if (CheckConditions(testParameters) && (testParameters[n_params-1] != 0)) {
+
+        bool isValid = CheckConditions(testParameters, data, order) && (order <= 1 || testParameters[n_params - 1] != 0);
+
+        if (isValid) {
+            std::lock_guard<std::mutex> guard(mtx);
             estimatedParameterSet.push_back(testParameters);
-            }
-        } else {
-            if (CheckConditions(testParameters)) {
-                estimatedParameterSet.push_back(testParameters);
-            }
         }
 
-        #pragma omp atomic
-            num_items_computed++;
-        if (i % (n_params_combinations / 100) == 0) {
-            #pragma omp critical
-            if (omp_get_thread_num() == 0) {
-                float progress = (float)n_threads * num_items_computed / n_params_combinations;
-                display_progress(progress);
+        #if OPENMP_ENABLED
+            #pragma omp atomic
+                num_items_computed++;
+            if (i % (n_params_combinations / 100) == 0) {
+                #pragma omp critical
+                if (omp_get_thread_num() == 0) {
+                    float progress = static_cast<float>(n_threads) * num_items_computed / n_params_combinations;
+                    display_progress(progress);
+                }
             }
-        }
+        #endif
     }
-    display_progress(1.0);
-    std::cerr << std::endl;
+    #if OPENMP_ENABLED
+        display_progress(1.0);
+        std::cerr << std::endl;
+    #endif
 
     long long n_valid_combinations = estimatedParameterSet.size();
     std::cout << " > Number of valid combinations: " << FormatNumberWithThousandsSeparator(n_valid_combinations) << " (" << FormatNumber(100.0*n_valid_combinations/n_params_combinations,2) << "%)" << std::endl;
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
     std::cout << " > Time taken: " << duration.count() << " ms" << std::endl;
+
     return estimatedParameterSet;
 }
 
@@ -328,19 +375,31 @@ void ReadExperimentalData(const std::string& filename, std::vector<std::pair<dou
     PrintUpdateText("Reading experimental data from files:", 50);
 };
 
+void displaySettings() {
+    #if OPENMP_ENABLED
+        PrintUpdateText("OpenMP enabled: True", 50);
+    #else
+        PrintUpdateText("OpenMP enabled: False", 50);
+    #endif
+}
 
-int main() {
+int main(int argc, char *argv[]) {
     // Print useful information
     PrintProgramInfo();
+
+    // Display settings
+    displaySettings();
 
     // Reading input parameters
     const std::string inputParametersTitle = "Input parameters";
     PrintSectionTitle(inputParametersTitle);
     // Parameters
-    double intervalMin = -1000;
-    double intervalMax = 1000;
-    double delta = 10;
-    int order = 3;
+    std::string inputFile;
+    double intervalMin;
+    double intervalMax;
+    double delta;
+    int order;
+    readCommandLineArguments(argc, argv, inputFile, intervalMin, intervalMax, delta, order);
     std::vector<std::pair<std::string, double>> parameters = {
         {"Interval minimum", intervalMin},
         {"Interval maximum", intervalMax},
@@ -375,13 +434,13 @@ int main() {
     const std::string extrapolatedYieldRatioTitle = "Extrapolated Yield Ratio";
     PrintSectionTitle(extrapolatedYieldRatioTitle);
 
-    std::vector<std::tuple<double, double, double>> predictions;
-    for (int i = 0; i < systemsToInterpolate.size(); i++) {
-        predictions.push_back(EstimateExtrapolatedYieldRatioFromYQ(systemsToInterpolate[i], estimatedParameterSet, order));
-    }
-    for (int i = 0; i < predictions.size(); i++) {
-        std::cout << " > YQ = " << FormatNumber(systemsToInterpolate[i],3) << " : " << std::get<0>(predictions[i]) << " +/- " << std::get<1>(predictions[i]) << " (order = " << std::get<2>(predictions[i]) << ")" << std::endl;
-    }
+    // std::vector<std::tuple<double, double, double>> predictions;
+    // for (int i = 0; i < systemsToInterpolate.size(); i++) {
+    //     predictions.push_back(EstimateExtrapolatedYieldRatioFromYQ(systemsToInterpolate[i], estimatedParameterSet, order));
+    // }
+    // for (int i = 0; i < predictions.size(); i++) {
+    //     std::cout << " > YQ = " << FormatNumber(systemsToInterpolate[i],3) << " : " << std::get<0>(predictions[i]) << " +/- " << std::get<1>(predictions[i]) << " (order = " << std::get<2>(predictions[i]) << ")" << std::endl;
+    // }
 
 
     // Combined Prediction
