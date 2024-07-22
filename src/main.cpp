@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <mutex>
 #include <boost/program_options.hpp>
+#include <yaml-cpp/yaml.h>
 #ifdef OPENMP_AVAILABLE
     #define OPENMP_ENABLED 1
     #include <omp.h>
