@@ -18,8 +18,6 @@ for arg in "$@"; do
   esac
 done
 
-echo "USE_OPENMP=${USE_OPENMP}"
-
 mkdir -p ${BUILD_DIR}
 ( cd ${BUILD_DIR}                          \
   && cmake "-DUSE_OPENMP=${USE_OPENMP}" .. \
