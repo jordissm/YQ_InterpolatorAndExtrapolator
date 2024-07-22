@@ -1,0 +1,84 @@
+cmake_minimum_required(VERSION 3.12)
+
+# Project name
+project(YQ_InterpolatorAndExtrapolator)
+
+# Set the C++ standard
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3")
+
+# Define the source directory and source file
+set(SRC_DIR src)
+set(SRC ${SRC_DIR}/main.cpp)
+
+# Find Boost
+find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
+
+if(Boost_FOUND)
+    include_directories(${Boost_INCLUDE_DIRS})
+endif()
+
+
+# Detect the operating system and set compiler flags accordingly
+if (APPLE)
+    set(CMAKE_CXX_COMPILER "clang++")
+    # Set OpenMP flags for Apple Clang
+    if (NOT DEFINED ${OpenMP_CXX_FLAGS})
+        set(OpenMP_CXX_FLAGS "-Xclang -fopenmp")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    endif()
+    if (NOT DEFINED ${OpenMP_CXX_INCLUDE_DIR})
+        set(OpenMP_CXX_INCLUDE_DIR "/opt/homebrew/opt/libomp/include")
+    endif()
+    if (NOT DEFINED ${OpenMP_CXX_LIB_NAMES})
+        set(OpenMP_CXX_LIB_NAMES "libomp")
+    endif()
+    if (NOT DEFINED ${OpenMP_libomp_LIBRARY})
+        set(OpenMP_libomp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+    endif()
+    # Try to find OpenMP
+    if (USE_OPENMP)
+        find_package(OpenMP)
+        if (OpenMP_CXX_FOUND)
+            set(OPENMP_LINK OpenMP::OpenMP_CXX)
+        else()
+            message(STATUS "OpenMP not found. Compiling without OpenMP support.")
+            set(OPENMP_LINK "")
+        endif()
+    else()
+        message(STATUS "OpenMP disabled. Compiling without OpenMP support.")
+        set(OPENMP_LINK "")
+    endif()
+elseif (UNIX AND NOT APPLE)
+    set(CMAKE_CXX_COMPILER "g++")
+    if (USE_OPENMP)
+        find_package(OpenMP)
+        if (OpenMP_CXX_FOUND)
+            if(NOT DEFINED ${OpenMP_CXX_FLAGS})
+                set(OpenMP_CXX_FLAGS "-fopenmp")
+            endif()
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+        endif()
+    else()
+        message(STATUS "OpenMP disabled. Compiling without OpenMP support.")
+    endif()
+else()
+    message(FATAL_ERROR "Unsupported operating system.")
+endif()
+
+# Add the executable
+add_executable(${PROJECT_NAME} ${SRC})
+
+# Link Boost libraries
+target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES})
+
+# Link OpenMP
+if (USE_OPENMP AND OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP enabled. Compiling with OpenMP support.")
+    add_definitions(-DOPENMP_AVAILABLE)
+    target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+endif()
+
+install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_SOURCE_DIR})
