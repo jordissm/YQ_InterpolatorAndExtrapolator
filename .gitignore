@@ -17,6 +17,5 @@
 # Ignore `build` dir
 build/
 
-# Ignore input and output data
-data/**
+# Ignore output data
 output/**
