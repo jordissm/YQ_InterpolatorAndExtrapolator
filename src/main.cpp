@@ -14,6 +14,7 @@
 #include <mutex>
 #include <boost/program_options.hpp>
 #include <yaml-cpp/yaml.h>
+
 #ifdef OPENMP_AVAILABLE
     #define OPENMP_ENABLED 1
     #include <omp.h>
@@ -24,6 +25,12 @@
 namespace po = boost::program_options;
 using namespace std::chrono;
 std::mutex mtx;
+
+size_t outputWidth = 50;
+
+struct ExperimentalData {
+    std::vector<std::pair<double, std::pair<double, std::pair<double,double>>>> datapoints;
+};
 
 void readCommandLineArguments(int argc, char* argv[], std::string& inputFile, double& intervalMin, double& intervalMax, double& delta, int& order) {
     po::options_description desc("Allowed options");
@@ -52,9 +59,16 @@ void readCommandLineArguments(int argc, char* argv[], std::string& inputFile, do
     }
 } // readCommandLineArguments
 
+struct InputParameters {
+    std::string yieldName;
+    double intervalMin;
+    double intervalMax;
+    double delta;
+    int order;
+};
 
 void display_progress(float progress) {
-    int barWidth = 50;
+    int barWidth = 42;
     std::cerr << "[";
     int pos = barWidth * progress;
     for (int i = 0; i < barWidth; ++i) {
@@ -64,6 +78,53 @@ void display_progress(float progress) {
     }
     std::cerr << "] " << int(progress * 100.0) << " %\r";
     std::cerr.flush();
+}
+
+void PrintUpdateText(const std::string& text, const size_t& lineWidth, const std::string& type = "info") {
+    std::string firstLinePrefix = (type == "info") ? " > " : " ! ";
+    const std::string subsequentLinePrefix = "   ";
+    size_t effectiveWidth = lineWidth - firstLinePrefix.length();
+    std::istringstream words(text);
+    std::string word;
+    std::vector<std::string> lines;
+    std::string line;
+    bool isFirstLine = true;
+
+    while (words >> word) {
+        if (line.length() + word.length() + 1 > effectiveWidth) {
+            if (isFirstLine) {
+                lines.push_back(firstLinePrefix + line);
+                effectiveWidth = lineWidth - subsequentLinePrefix.length();
+                isFirstLine = false;
+            } else {
+                lines.push_back(subsequentLinePrefix + line);
+            }
+            line = word;
+        } else {
+            if (!line.empty()) {
+                line += " ";
+            }
+            line += word;
+        }
+    }
+    if (!line.empty()) {
+        if (isFirstLine) {
+            lines.push_back(firstLinePrefix + line);
+        } else {
+            lines.push_back(subsequentLinePrefix + line);
+        }
+    }
+
+    std::ostringstream wrappedText;
+    for (const auto& l : lines) {
+        wrappedText << l << "\n";
+    }
+
+    if (type == "info") {
+        std::cout << wrappedText.str() << std::endl;;
+    } else if (type == "error") {
+        std::cerr << wrappedText.str() << std::endl;;
+    }
 }
 
 std::vector<int> FindRepresentation(long long n, int base, int fixed_size) {
@@ -97,8 +158,8 @@ std::string FormatNumber(double number, int precision) {
     return stream.str();
 }
 
-bool CheckConditions(const std::vector<double>& testParameters, const std::vector<std::pair<double, std::pair<double, double>>>& data, int order) {
-    for (const auto& datapoint : data) {
+bool CheckConditions(const std::vector<double>& testParameters, const ExperimentalData& experimentalData, int order) {
+    for (const auto& datapoint : experimentalData.datapoints) {
         double yq = datapoint.first;
         double value = 0.0;
         double yqPower = 1.0;  // Start with yq^0
@@ -108,8 +169,8 @@ bool CheckConditions(const std::vector<double>& testParameters, const std::vecto
             yqPower *= yq;  // Increment the power of yq
         }
 
-        double lowerBound = datapoint.second.first;
-        double upperBound = datapoint.second.second;
+        double lowerBound = datapoint.second.second.first;
+        double upperBound = datapoint.second.second.second;
         if (!(lowerBound <= value && value <= upperBound)) {
             return false;
         }
@@ -117,7 +178,7 @@ bool CheckConditions(const std::vector<double>& testParameters, const std::vecto
     return true;
 }
 
-std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std::pair<double, std::pair<double, double>>>& data, double intervalMin, double intervalMax, double delta, int order = 1) {
+std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData& experimentalData, double intervalMin, double intervalMax, double delta, int order = 1) {
     auto start = high_resolution_clock::now();
 
     // Generate a vector with all the possible values for the polynomial coefficients
@@ -131,7 +192,7 @@ std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std:
 
     std::vector<std::vector<double>> estimatedParameterSet;
     long long n_params_combinations = static_cast<long long>(std::pow(base, n_params));
-    std::cout << " > Number of possible combinations: " << FormatNumberWithThousandsSeparator(n_params_combinations) << std::endl;
+    PrintUpdateText("Number of possible combinations: " + FormatNumberWithThousandsSeparator(n_params_combinations), outputWidth);
 
     #if OPENMP_ENABLED
         long num_items_computed = 0;
@@ -145,7 +206,7 @@ std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std:
             testParameters[j] = possibleCoefficients[parameterRepresentation[j]];
         }
 
-        bool isValid = CheckConditions(testParameters, data, order) && (order <= 1 || testParameters[n_params - 1] != 0);
+        bool isValid = CheckConditions(testParameters, experimentalData, order) && (order <= 1 || testParameters[n_params - 1] != 0);
 
         if (isValid) {
             std::lock_guard<std::mutex> guard(mtx);
@@ -170,10 +231,10 @@ std::vector<std::vector<double>> FindEstimationParameters(const std::vector<std:
     #endif
 
     long long n_valid_combinations = estimatedParameterSet.size();
-    std::cout << " > Number of valid combinations: " << FormatNumberWithThousandsSeparator(n_valid_combinations) << " (" << FormatNumber(100.0*n_valid_combinations/n_params_combinations,2) << "%)" << std::endl;
+    PrintUpdateText("Number of valid combinations: " + FormatNumberWithThousandsSeparator(n_valid_combinations) + " (" + FormatNumber(100.0 * n_valid_combinations / n_params_combinations, 2) + "%)", outputWidth);
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<milliseconds>(stop - start);
-    std::cout << " > Time taken: " << duration.count() << " ms" << std::endl;
+    PrintUpdateText("Time taken: " + FormatNumber(duration.count(), 0) + " ms", outputWidth);
 
     return estimatedParameterSet;
 }
@@ -215,48 +276,7 @@ std::pair<double, std::pair<double, double>> CombinedPrediction(const std::vecto
 }
 
 
-void PrintUpdateText(const std::string& text, size_t lineWidth) {
-    const std::string firstLinePrefix = " > ";
-    const std::string subsequentLinePrefix = "   ";
-    size_t effectiveWidth = lineWidth - firstLinePrefix.length();
-    std::istringstream words(text);
-    std::string word;
-    std::vector<std::string> lines;
-    std::string line;
-    bool isFirstLine = true;
 
-    while (words >> word) {
-        if (line.length() + word.length() + 1 > effectiveWidth) {
-            if (isFirstLine) {
-                lines.push_back(firstLinePrefix + line);
-                effectiveWidth = lineWidth - subsequentLinePrefix.length();
-                isFirstLine = false;
-            } else {
-                lines.push_back(subsequentLinePrefix + line);
-            }
-            line = word;
-        } else {
-            if (!line.empty()) {
-                line += " ";
-            }
-            line += word;
-        }
-    }
-    if (!line.empty()) {
-        if (isFirstLine) {
-            lines.push_back(firstLinePrefix + line);
-        } else {
-            lines.push_back(subsequentLinePrefix + line);
-        }
-    }
-
-    std::ostringstream wrappedText;
-    for (const auto& l : lines) {
-        wrappedText << l << "\n";
-    }
-
-    std::cout << wrappedText.str() << std::endl;
-}
 
 std::vector<std::string> SplitIntoLines(const std::string& text) {
     std::istringstream stream(text);
@@ -269,7 +289,7 @@ std::vector<std::string> SplitIntoLines(const std::string& text) {
 }
 
 // Function to center a string within a given width
-void PrintCenteredText(const std::string& text, size_t width) {
+void PrintCenteredText(const std::string& text, const size_t& width) {
     std::vector<std::string> lines = SplitIntoLines(text);
     
     for (const std::string& line : lines) {
@@ -281,23 +301,24 @@ void PrintCenteredText(const std::string& text, size_t width) {
 // Function to print the program title and useful information
 void PrintProgramInfo() {
     const std::string description = "This program provides a polynomial interpolation and extrapolation in $Y_Q$ for different particle yield ratios in heavy-ion collisions.";
-
-    std::cout << "************************************************\n";
-    std::cout << "**  Polynomial interpolator/extrapolator for  **\n";
-    std::cout << "**  yield ratios in heavy-ion collisions.     **\n";
-    std::cout << "**                                            **\n";
-    std::cout << "**  Jordi Salinas San Martin,                 **\n";
-    std::cout << "**  U. of I. Urbana-Champaign, 2024           **\n";
-    std::cout << "************************************************\n";
     std::cout << "\n";
-    PrintUpdateText(description, 50);
+    std::cout << "**************************************************\n";
+    std::cout << "**   Polynomial interpolator/extrapolator for   **\n";
+    std::cout << "**   yield ratios in heavy-ion collisions.      **\n";
+    std::cout << "**                                              **\n";
+    std::cout << "**   Jordi Salinas San Martin,                  **\n";
+    std::cout << "**   U. of I. Urbana-Champaign, 2024            **\n";
+    std::cout << "**************************************************\n";
+    std::cout << "\n";
+    PrintUpdateText(description, outputWidth);
 }
 
 void PrintSectionTitle(const std::string& title) {
+    const std::string separator(outputWidth, '=');
     std::cout << "\n";
-    std::cout << "================================================\n";
-    PrintCenteredText(title,50);
-    std::cout << "================================================\n";
+    std::cout << separator << std::endl;
+    PrintCenteredText(title, outputWidth);
+    std::cout << separator << std::endl;
     std::cout << "\n";
 }
 
@@ -339,9 +360,15 @@ for (const double& value : values) {
 PrintCenteredText(separator, 50);
 }
 
-void PrintInputParameters(const std::vector<std::pair<std::string, double>>& parameters) {
+void PrintInputParameters(const InputParameters& inputParameters) {
+    std::vector<std::pair<std::string, double>> parameters = {
+        {"Interval minimum", inputParameters.intervalMin},
+        {"Interval maximum", inputParameters.intervalMax},
+        {"Delta", inputParameters.delta},
+        {"Order", inputParameters.order}
+    };
     std::string message = "The following input parameters have been provided:";
-    PrintUpdateText(message, 50);
+    PrintUpdateText(message, outputWidth);
     // Print the header
     int whitespace_size = 3;
     std::string whitespace(whitespace_size, ' ');
@@ -352,9 +379,13 @@ void PrintInputParameters(const std::vector<std::pair<std::string, double>>& par
     int column_1_width = column_1_header.size() + 2 * whitespace_size;
     int column_2_width = column_2_header.size() + 2 * whitespace_size;
     std::string separator = "+" + std::string(column_1_width, '-') + "+" + std::string(column_2_width, '-') + "+";
-    PrintCenteredText(separator, 50);
-    PrintCenteredText(header, 50);
-    PrintCenteredText(separator, 50);
+    int title_size = inputParameters.yieldName.size();
+    std::string title_rightwhitespace((header.size() - title_size - 5), ' ');
+    std::string title = " * " + inputParameters.yieldName + " *" + title_rightwhitespace;
+    PrintCenteredText(title, outputWidth);
+    PrintCenteredText(separator, outputWidth);
+    PrintCenteredText(header, outputWidth);
+    PrintCenteredText(separator, outputWidth);
 
     // Print each value in the vector
     for (const auto& parameter : parameters) {
@@ -367,13 +398,47 @@ void PrintInputParameters(const std::vector<std::pair<std::string, double>>& par
         int column_2_rightspace = column_2_width - rounded.size() - column_2_leftspace;
         std::string column_2_text = std::string(column_2_leftspace, ' ') + rounded + std::string(column_2_rightspace, ' ') + "|";
 
-        PrintCenteredText(column_1_text + column_2_text, 50);
+        PrintCenteredText(column_1_text + column_2_text, outputWidth);
     }
-    PrintCenteredText(separator, 50);
+    PrintCenteredText(separator, outputWidth);
+    std::cout << std::endl;
 }
 
-void ReadExperimentalData(const std::string& filename, std::vector<std::pair<double, std::pair<double, double>>>& data) {
-    PrintUpdateText("Reading experimental data from files:", 50);
+ExperimentalData ReadExperimentalData(const std::string& filename) {
+    ExperimentalData experimentalData;
+    PrintUpdateText("Reading in data from file: " + filename, outputWidth);
+
+    std::filesystem::path completeFilename = "data/" + std::filesystem::path(filename).string();
+    if (!std::filesystem::exists(completeFilename)) {
+        PrintUpdateText("Error: File " + filename + " does not exist.", outputWidth, "error");
+        return experimentalData;
+    }
+
+    std::ifstream infile(completeFilename);
+
+    if (!infile.is_open()) {
+        PrintUpdateText("Error opening file: " + filename, outputWidth, "error");
+        return experimentalData;
+    }
+
+    std::string line;
+    // Skip the header line
+    std::getline(infile, line);
+
+    while (std::getline(infile, line)) {
+        std::istringstream iss(line);
+        double YQ, value, min, max;
+        if (!(iss >> YQ >> value >> min >> max)) {
+            PrintUpdateText("Error reading line: " + line, outputWidth, "error");
+            continue;  // Skip lines that cannot be parsed
+        }
+
+        experimentalData.datapoints.push_back({YQ, {value, {min, max}}});
+    }
+
+    infile.close();
+    PrintUpdateText("Data loaded successfully", outputWidth);
+    return experimentalData;
 };
 
 void displaySettings() {
@@ -383,6 +448,43 @@ void displaySettings() {
         PrintUpdateText("OpenMP enabled: False", 50);
     #endif
 }
+
+struct Approximation {
+    int order;
+    std::vector<int> interval;
+    double delta;
+};
+
+struct Yield {
+    std::string name;
+    bool isTurnedOn;
+    std::string filename;
+    std::vector<Approximation> approximations;
+    ExperimentalData data;
+};
+
+void parseYAML(const std::string& filename, std::vector<Yield>& yields) {
+    YAML::Node config = YAML::LoadFile(filename);
+
+    for (const auto& yieldNode : config["yields"]) {
+        Yield yield;
+        yield.name = yieldNode["name"].as<std::string>();
+        yield.isTurnedOn = yieldNode["turned_on"].as<bool>();
+        yield.filename = yieldNode["filename"].as<std::string>();
+
+        for (const auto& approxNode : yieldNode["approximations"]) {
+            Approximation approx;
+            approx.order = approxNode["order"].as<int>();
+            approx.interval = approxNode["interval"].as<std::vector<int>>();
+            approx.delta = approxNode["delta"].as<double>();
+            yield.approximations.push_back(approx);
+        }
+
+        yield.isTurnedOn ? yields.push_back(yield) : void();
+    }
+}
+
+
 
 int main(int argc, char *argv[]) {
     // Print useful information
@@ -394,6 +496,22 @@ int main(int argc, char *argv[]) {
     // Reading input parameters
     const std::string inputParametersTitle = "Input parameters";
     PrintSectionTitle(inputParametersTitle);
+    std::vector<Yield> yields;
+    parseYAML("input.yml", yields);
+
+    // Print the parsed data to verify
+    for (const auto& yield : yields) {
+        for (const auto& approx : yield.approximations) {
+            InputParameters inputParameters;
+            inputParameters.yieldName = yield.name;
+            inputParameters.intervalMin = approx.interval[0];
+            inputParameters.intervalMax = approx.interval[1];
+            inputParameters.delta = approx.delta;
+            inputParameters.order = approx.order;
+            PrintInputParameters(inputParameters);
+        }
+    }
+
     // Parameters
     std::string inputFile;
     double intervalMin;
@@ -407,17 +525,14 @@ int main(int argc, char *argv[]) {
         {"Delta", delta},
         {"Order", order}
     };
-    PrintInputParameters(parameters);
+
 
     // Reading experimental yield ratio data
     const std::string dataLoadingTitle = "Experimental data";
     PrintSectionTitle(dataLoadingTitle);
-    std::vector<std::pair<double, std::pair<double, double>>> data = {
-        {0.387, {1.005-0.056, 1.005+0.056}},
-        {0.399, {1.015-0.051, 1.015+0.051}},
-        {0.460, {1.003-0.050, 1.003+0.050}}
-    };
-    ReadExperimentalData("data.txt", data);
+    for (auto& yield : yields) {
+        yield.data = (yield.isTurnedOn) ? ReadExperimentalData(yield.filename) : ExperimentalData();
+    }
 
     // Reading in systems to predict
     const std::string interpolateSystemsTitle = "Systems to interpolate/extrapolate";
@@ -428,21 +543,18 @@ int main(int argc, char *argv[]) {
     // Find Estimation Parameters
     const std::string estimationParametersTitle = "Estimation Parameters";
     PrintSectionTitle(estimationParametersTitle);
-    std::vector<std::vector<double>> estimatedParameterSet = FindEstimationParameters(data, intervalMin, intervalMax, delta, order);
-
+    for (const auto& yield : yields) {
+        if (yield.isTurnedOn && yield.data.datapoints.size() > 0){
+            for (const auto& approx : yield.approximations) {
+                PrintUpdateText("Estimating parameters for " + yield.name + " with order " + std::to_string(approx.order), outputWidth);
+                std::vector<std::vector<double>> estimatedParameterSet = FindEstimationParameters(yield.data, approx.interval[0], approx.interval[1], approx.delta, approx.order);
+            }
+        }
+    }
 
     // Estimate Extrapolated Yield Ratio from YQ
     const std::string extrapolatedYieldRatioTitle = "Extrapolated Yield Ratio";
     PrintSectionTitle(extrapolatedYieldRatioTitle);
-
-    // std::vector<std::tuple<double, double, double>> predictions;
-    // for (int i = 0; i < systemsToInterpolate.size(); i++) {
-    //     predictions.push_back(EstimateExtrapolatedYieldRatioFromYQ(systemsToInterpolate[i], estimatedParameterSet, order));
-    // }
-    // for (int i = 0; i < predictions.size(); i++) {
-    //     std::cout << " > YQ = " << FormatNumber(systemsToInterpolate[i],3) << " : " << std::get<0>(predictions[i]) << " +/- " << std::get<1>(predictions[i]) << " (order = " << std::get<2>(predictions[i]) << ")" << std::endl;
-    // }
-
 
     // Combined Prediction
     const std::string combinedPredictionTitle = "Combined Prediction";
