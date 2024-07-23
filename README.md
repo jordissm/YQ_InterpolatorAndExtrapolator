@@ -9,7 +9,6 @@ This is a program to perform interpolation and extrapolation predictions for yie
 |------------|-----------------|
 | cmake      |                 |
 | yaml-cpp   |                 |
-| Boost      |                 |
 | OpenMP     |                 |
 
 ### Compilation and installation

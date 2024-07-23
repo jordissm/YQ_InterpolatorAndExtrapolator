@@ -14,12 +14,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3")
 set(SRC_DIR src)
 set(SRC ${SRC_DIR}/main.cpp)
 
-# Find Boost
-find_package(Boost REQUIRED COMPONENTS system filesystem program_options)
-if(Boost_FOUND)
-    include_directories(${Boost_INCLUDE_DIRS})
-endif()
-
 # Find YAML-CPP
 find_package(yaml-cpp REQUIRED)
 if (yaml-cpp_FOUND)
@@ -71,9 +65,6 @@ endif()
 
 # Add the executable
 add_executable(${PROJECT_NAME} ${SRC})
-
-# Link Boost libraries
-target_link_libraries(${PROJECT_NAME} ${Boost_LIBRARIES})
 
 # Link yaml-cpp
 target_link_libraries(${PROJECT_NAME} ${YAML_CPP_LIBRARIES})

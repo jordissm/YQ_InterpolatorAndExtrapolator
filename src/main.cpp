@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <mutex>
-#include <boost/program_options.hpp>
 #include <yaml-cpp/yaml.h>
 
 #ifdef OPENMP_AVAILABLE
@@ -22,7 +21,7 @@
     #define OPENMP_ENABLED 0
 #endif
 
-namespace po = boost::program_options;
+// namespace po = boost::program_options;
 using namespace std::chrono;
 std::mutex mtx;
 
@@ -31,33 +30,6 @@ size_t outputWidth = 50;
 struct ExperimentalData {
     std::vector<std::pair<double, std::pair<double, std::pair<double,double>>>> datapoints;
 };
-
-void readCommandLineArguments(int argc, char* argv[], std::string& inputFile, double& intervalMin, double& intervalMax, double& delta, int& order) {
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help", "produce help message")
-        ("input-file", po::value<std::string>(&inputFile)->required(), "input file name")
-        ("interval-min", po::value<double>(&intervalMin)->required(), "interval minimum")
-        ("interval-max", po::value<double>(&intervalMax)->required(), "interval maximum")
-        ("delta", po::value<double>(&delta)->required(), "delta")
-        ("order", po::value<int>(&order)->required(), "order");
-
-    po::variables_map vm;
-    try {
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-
-        if (vm.count("help")) {
-            std::cout << desc << std::endl;
-            exit(0);
-        }
-        po::notify(vm);
-    }
-    catch (const po::error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        std::cerr << desc << std::endl;
-        exit(1);
-    }
-} // readCommandLineArguments
 
 struct InputParameters {
     std::string yieldName;
@@ -239,7 +211,6 @@ std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData
     return estimatedParameterSet;
 }
 
-
 std::tuple<double, double, double> EstimateExtrapolatedYieldRatioFromYQ(double yq, const std::vector<std::vector<double>>& estimatedParameterSet, int order) {
     std::vector<double> values;
     for (const auto& params : estimatedParameterSet) {
@@ -258,7 +229,6 @@ std::tuple<double, double, double> EstimateExtrapolatedYieldRatioFromYQ(double y
     return {mean, error, order};
 }
 
-
 std::pair<double, std::pair<double, double>> CombinedPrediction(const std::vector<std::tuple<double, double, double>>& predictions) {
     double mean = 0.0;
     double min = std::numeric_limits<double>::max();
@@ -274,9 +244,6 @@ std::pair<double, std::pair<double, double>> CombinedPrediction(const std::vecto
     
     return {mean, {mean - min, max - mean}};
 }
-
-
-
 
 std::vector<std::string> SplitIntoLines(const std::string& text) {
     std::istringstream stream(text);
@@ -321,7 +288,6 @@ void PrintSectionTitle(const std::string& title) {
     std::cout << separator << std::endl;
     std::cout << "\n";
 }
-
 
 // Function to print a nicely formatted table
 void PrintSystemsToInterpolate(const std::vector<double>& values) {
@@ -486,7 +452,7 @@ void parseYAML(const std::string& filename, std::vector<Yield>& yields) {
 
 
 
-int main(int argc, char *argv[]) {
+int main() {
     // Print useful information
     PrintProgramInfo();
 
@@ -511,21 +477,6 @@ int main(int argc, char *argv[]) {
             PrintInputParameters(inputParameters);
         }
     }
-
-    // Parameters
-    std::string inputFile;
-    double intervalMin;
-    double intervalMax;
-    double delta;
-    int order;
-    readCommandLineArguments(argc, argv, inputFile, intervalMin, intervalMax, delta, order);
-    std::vector<std::pair<std::string, double>> parameters = {
-        {"Interval minimum", intervalMin},
-        {"Interval maximum", intervalMax},
-        {"Delta", delta},
-        {"Order", order}
-    };
-
 
     // Reading experimental yield ratio data
     const std::string dataLoadingTitle = "Experimental data";
