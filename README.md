@@ -1,6 +1,6 @@
 # Yield interpolator/extrapolator in $Y_Q$
 
-This is a program to perform interpolation and extrapolation predictions for yield (and yield ratios) using arbitrary-order polynomials. 
+This is a program to perform interpolation and extrapolation predictions for yield (and yield ratios) of charged particles in heavy-ion collisions using arbitrary-order polynomials.
 
 ## How to build and install the project
 ### Prerequisites
