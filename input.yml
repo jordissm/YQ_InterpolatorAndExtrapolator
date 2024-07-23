@@ -1,0 +1,100 @@
+---
+yields:
+  - name: π⁻/π⁺
+    turned_on: true
+    filename: 'piMinus_piPlus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: K⁻/K⁺
+    turned_on: true
+    filename: 'KMinus_KPlus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: anti-p/p
+    turned_on: true
+    filename: 'anti-p_p.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 0.5
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: K⁻/π⁻
+    turned_on: true
+    filename: 'KMinus_piMinus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: anti-p/π⁻
+    turned_on: true
+    filename: 'anti-p_piMinus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: K⁺/π⁺
+    turned_on: false
+    filename: 'KPlus_piPlus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+
+  - name: p/π⁺
+    turned_on: false
+    filename: 'p_piPlus.dat'
+    approximations:
+      - order: 1
+        interval: [-5, 5]
+        delta: 0.01
+      - order: 2
+        interval: [-135, 135]
+        delta: 2
+      - order: 3
+        interval: [10, 10]
+        delta: 0.5
+...
