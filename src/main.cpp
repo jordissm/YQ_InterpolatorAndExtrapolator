@@ -1,14 +1,10 @@
 #include <iostream> // std::cout, std::endl
 #include <string>   // std::string
 #include <numeric>  // std::iota
-#include <complex>  // std::complex
 #include <fstream>
 #include <vector>
-#include <cmath>
 #include <chrono>
 #include <iomanip>
-#include <thread>
-#include <stdexcept>
 #include <algorithm>
 #include <filesystem>
 #include <mutex>
@@ -21,11 +17,11 @@
     #define OPENMP_ENABLED 0
 #endif
 
-// namespace po = boost::program_options;
 using namespace std::chrono;
-std::mutex mtx;
 
-size_t outputWidth = 50;
+
+constexpr size_t outputWidth = 55;
+std::mutex mtx;
 
 struct ExperimentalData {
     std::vector<std::pair<double, std::pair<double, std::pair<double,double>>>> datapoints;
@@ -40,9 +36,9 @@ struct InputParameters {
 };
 
 void display_progress(float progress) {
-    int barWidth = 42;
+    int barWidth = outputWidth-8;
     std::cerr << "[";
-    int pos = barWidth * progress;
+    int pos = static_cast<int>(barWidth * progress);
     for (int i = 0; i < barWidth; ++i) {
         if (i < pos) std::cerr << "=";
         else if (i == pos) std::cerr << ">";
@@ -99,7 +95,7 @@ void PrintUpdateText(const std::string& text, const size_t& lineWidth, const std
     }
 }
 
-std::vector<int> FindRepresentation(long long n, int base, int fixed_size) {
+std::vector<int> FindRepresentation(long long n, const int& base, const int& fixed_size) {
     std::vector<int> representation(fixed_size, 0); // Initialize with zeros
     int index = 0;
 
@@ -113,7 +109,7 @@ std::vector<int> FindRepresentation(long long n, int base, int fixed_size) {
     return representation;
 }
 
-std::string FormatNumberWithThousandsSeparator(long long n) {
+std::string FormatNumberWithThousandsSeparator(const long long& n) {
     std::string result = std::to_string(n); // Convert integer 'n' to a string and store it in 'result'
 
     // Loop to insert commas for thousands separators in the string
@@ -124,13 +120,13 @@ std::string FormatNumberWithThousandsSeparator(long long n) {
     return result; // Return the formatted string
 }
 
-std::string FormatNumber(double number, int precision) {
+std::string FormatNumber(const double& number, const int& precision) {
     std::ostringstream stream;
     stream << std::fixed << std::setprecision(precision) << number;
     return stream.str();
 }
 
-bool CheckConditions(const std::vector<double>& testParameters, const ExperimentalData& experimentalData, int order) {
+bool CheckConditions(const std::vector<double>& testParameters, const ExperimentalData& experimentalData, const int& order) {
     for (const auto& datapoint : experimentalData.datapoints) {
         double yq = datapoint.first;
         double value = 0.0;
@@ -150,7 +146,7 @@ bool CheckConditions(const std::vector<double>& testParameters, const Experiment
     return true;
 }
 
-std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData& experimentalData, double intervalMin, double intervalMax, double delta, int order = 1) {
+std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData& experimentalData, const double& intervalMin, const double& intervalMax, const double& delta, const int& order = 1) {
     auto start = high_resolution_clock::now();
 
     // Generate a vector with all the possible values for the polynomial coefficients
@@ -163,7 +159,7 @@ std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData
     int base = possibleCoefficients.size();
 
     std::vector<std::vector<double>> estimatedParameterSet;
-    long long n_params_combinations = static_cast<long long>(std::pow(base, n_params));
+    long long n_params_combinations = static_cast<long long>(std::exp(n_params * std::log(base)));
     PrintUpdateText("Number of possible combinations: " + FormatNumberWithThousandsSeparator(n_params_combinations), outputWidth);
 
     #if OPENMP_ENABLED
@@ -180,6 +176,7 @@ std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData
 
         bool isValid = CheckConditions(testParameters, experimentalData, order) && (order <= 1 || testParameters[n_params - 1] != 0);
 
+        
         if (isValid) {
             std::lock_guard<std::mutex> guard(mtx);
             estimatedParameterSet.push_back(testParameters);
@@ -211,7 +208,7 @@ std::vector<std::vector<double>> FindEstimationParameters(const ExperimentalData
     return estimatedParameterSet;
 }
 
-std::tuple<double, double, double> EstimateExtrapolatedYieldRatioFromYQ(double yq, const std::vector<std::vector<double>>& estimatedParameterSet, int order) {
+std::tuple<double, double> EstimateExtrapolatedYieldRatioFromYQ(double yq, const std::vector<std::vector<double>>& estimatedParameterSet, int order) {
     std::vector<double> values;
     for (const auto& params : estimatedParameterSet) {
         double value = 0.0;
@@ -226,23 +223,7 @@ std::tuple<double, double, double> EstimateExtrapolatedYieldRatioFromYQ(double y
     double mean = (lowerBound + upperBound) / 2.0;
     double error = upperBound - mean;
 
-    return {mean, error, order};
-}
-
-std::pair<double, std::pair<double, double>> CombinedPrediction(const std::vector<std::tuple<double, double, double>>& predictions) {
-    double mean = 0.0;
-    double min = std::numeric_limits<double>::max();
-    double max = std::numeric_limits<double>::min();
-
-    for (const auto& prediction : predictions) {
-        mean += std::get<0>(prediction);
-        min = std::min(min, std::get<1>(prediction));
-        max = std::max(max, std::get<2>(prediction));
-    }
-
-    mean /= predictions.size();
-    
-    return {mean, {mean - min, max - mean}};
+    return {mean, error};
 }
 
 std::vector<std::string> SplitIntoLines(const std::string& text) {
@@ -485,37 +466,60 @@ int main() {
         yield.data = (yield.isTurnedOn) ? ReadExperimentalData(yield.filename) : ExperimentalData();
     }
 
-    // Reading in systems to predict
-    const std::string interpolateSystemsTitle = "Systems to interpolate/extrapolate";
-    PrintSectionTitle(interpolateSystemsTitle);
-    std::vector<double> systemsToInterpolate = {0.417, 0.458, 0.5};
-    PrintSystemsToInterpolate(systemsToInterpolate);
-
     // Find Estimation Parameters
-    const std::string estimationParametersTitle = "Estimation Parameters";
+    const std::string estimationParametersTitle = "Obtaining valid parametrizations";
     PrintSectionTitle(estimationParametersTitle);
+    std::unordered_map<std::string, std::unordered_map<int,std::vector<std::vector<double>>>> estimationParametersCollection;
     for (const auto& yield : yields) {
         if (yield.isTurnedOn && yield.data.datapoints.size() > 0){
             for (const auto& approx : yield.approximations) {
                 PrintUpdateText("Estimating parameters for " + yield.name + " with order " + std::to_string(approx.order), outputWidth);
-                std::vector<std::vector<double>> estimatedParameterSet = FindEstimationParameters(yield.data, approx.interval[0], approx.interval[1], approx.delta, approx.order);
+                std::vector<std::vector<double>> estimatedParameters = FindEstimationParameters(yield.data, approx.interval[0], approx.interval[1], approx.delta, approx.order);
+                estimationParametersCollection[yield.name][approx.order] = estimatedParameters;
             }
         }
     }
 
-    // Estimate Extrapolated Yield Ratio from YQ
-    const std::string extrapolatedYieldRatioTitle = "Extrapolated Yield Ratio";
-    PrintSectionTitle(extrapolatedYieldRatioTitle);
+    const std::string exportingDataTitle = "Exporting data";
+    PrintSectionTitle(exportingDataTitle);
 
-    // Combined Prediction
-    const std::string combinedPredictionTitle = "Combined Prediction";
-    PrintSectionTitle(combinedPredictionTitle);
-
-
-    // Data export
-    const std::string dataExportTitle = "Data Export";
-    PrintSectionTitle(dataExportTitle);
-
+    for (const auto& yield : yields) {
+        if (yield.isTurnedOn && yield.data.datapoints.size() > 0) {
+            // Define output file path
+            std::filesystem::path outputPath("output");
+            std::filesystem::create_directory(outputPath);
+            outputPath /= yield.filename;
+            
+            std::ofstream OUT(outputPath);
+            if (!OUT.is_open()) {
+                PrintUpdateText("Error writing to file: " + yield.filename, outputWidth, "error");
+                continue;
+            }
+            double yqInterpolationLowerBound = yield.data.datapoints[0].first;
+            double yqInterpolationUpperBound = yield.data.datapoints[yield.data.datapoints.size() - 1].first;
+            OUT << std::setw(6)  << std::setfill(' ') << std::left << "YQ";
+            OUT << std::setw(16) << std::setfill(' ') << std::right << "Mean_value ";
+            OUT << std::setw(16) << std::setfill(' ') << std::right << "Min_value ";
+            OUT << std::setw(16) << std::setfill(' ') << std::right << "Max_value ";
+            OUT << std::setw(8)  << std::setfill(' ') << std::right << "Order ";
+            OUT << std::setw(15) << std::setfill(' ') << std::right << "Approximation";
+            for (const auto& approx : yield.approximations) {
+                PrintUpdateText("Combining " + yield.name + " parametrizations of order " + std::to_string(approx.order) + " and exporting to file: " + "output/" + yield.filename, outputWidth);
+                for (double yq = 0.300; yq <= 0.601; yq += 0.001) {    
+                    std::string approximationType = (yq <= yqInterpolationLowerBound || yq >= yqInterpolationUpperBound) ? "extrapolation" : "interpolation";
+                    auto [mean, error] = EstimateExtrapolatedYieldRatioFromYQ(yq, estimationParametersCollection[yield.name][approx.order], approx.order);
+                    OUT << "\n";
+                    OUT << std::setw(5)  << std::setfill(' ') << std::left  << std::setprecision(3) << std::fixed           << yq         << ' ';
+                    OUT << std::setw(15) << std::setfill(' ') << std::right << std::scientific      << std::setprecision(8) << mean       << ' ';
+                    OUT << std::setw(15) << std::setfill(' ') << std::right << std::scientific      << std::setprecision(8) << mean-error << ' ';
+                    OUT << std::setw(15) << std::setfill(' ') << std::right << std::scientific      << std::setprecision(8) << mean+error << ' ';
+                    OUT << std::setw(7)  << std::setfill(' ') << std::right << approx.order         << ' ';
+                    OUT << std::setw(15) << std::setfill(' ') << std::right << approximationType;
+                }
+            }
+            OUT.close();
+        }
+    }
  
     return 0;
 }
