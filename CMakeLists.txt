@@ -10,9 +10,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3")
 
-# Define the source directory and source file
+# Define the source directory and source files
 set(SRC_DIR src)
-set(SRC ${SRC_DIR}/main.cpp)
+file(GLOB SRC_FILES ${SRC_DIR}/*.cpp)
+set(SRC ${SRC_FILES})
+
+# Include directories
+include_directories(include)
 
 # Find YAML-CPP
 find_package(yaml-cpp REQUIRED)
@@ -78,3 +82,4 @@ if (USE_OPENMP AND OpenMP_CXX_FOUND)
 endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_SOURCE_DIR})
+
