@@ -5,69 +5,69 @@ yields:
     filename: 'piMinus_piPlus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
-        delta: 0.01
+        interval: [-4, 4]
+        delta: 0.001
       - order: 2
-        interval: [-135, 135]
-        delta: 2
-      - order: 3
-        interval: [10, 10]
+        interval: [-50, 50]
         delta: 0.5
+      - order: 3
+        interval: [-50, 50]
+        delta: 1.0
 
   - name: K⁻/K⁺
-    turned_on: true
+    turned_on: false
     filename: 'KMinus_KPlus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 2
+        interval: [-150, 150]
+        delta: 0.1
       - order: 3
-        interval: [10, 10]
+        interval: [-100, 100]
         delta: 0.5
 
   - name: anti-p/p
-    turned_on: true
+    turned_on: false
     filename: 'anti-p_p.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 0.5
+        interval: [-150, 150]
+        delta: 0.1
       - order: 3
-        interval: [10, 10]
+        interval: [-100, 100]
         delta: 0.5
 
   - name: K⁻/π⁻
-    turned_on: true
+    turned_on: false
     filename: 'KMinus_piMinus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 2
+        interval: [-150, 150]
+        delta: 0.1
       - order: 3
-        interval: [10, 10]
+        interval: [-100, 100]
         delta: 0.5
 
   - name: anti-p/π⁻
-    turned_on: true
+    turned_on: false
     filename: 'anti-p_piMinus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 2
+        interval: [-150, 150]
+        delta: 0.05
       - order: 3
-        interval: [10, 10]
+        interval: [-100, 100]
         delta: 0.5
 
   - name: K⁺/π⁺
@@ -75,26 +75,26 @@ yields:
     filename: 'KPlus_piPlus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 2
+        interval: [-4, 4]
+        delta: 0.01
       - order: 3
-        interval: [10, 10]
-        delta: 0.5
+        interval: [-4, 4]
+        delta: 0.1
 
   - name: p/π⁺
     turned_on: false
     filename: 'p_piPlus.dat'
     approximations:
       - order: 1
-        interval: [-5, 5]
+        interval: [-10, 10]
         delta: 0.01
       - order: 2
-        interval: [-135, 135]
-        delta: 2
+        interval: [-4, 4]
+        delta: 0.01
       - order: 3
-        interval: [10, 10]
-        delta: 0.5
+        interval: [-4, 4]
+        delta: 0.1
 ...
